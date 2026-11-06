@@ -1,4 +1,6 @@
-<<<<<<< HEAD
+NCE command station plugin for pmri
+
+
 # pmri-nce — NCE hardware driver
 
 NCE driver for the Python JMRI rewrite. Where `pmri-loconet` exercises the
@@ -187,7 +189,3 @@ pmri-nce/
     ├── unit/                 message encoding, traffic, monitors, throttle, programmer
     └── integration/          open/close + entry point + connection cleanup
 ```
-=======
-# pmri-nce
-NCE command station plugin for pmri
->>>>>>> 1a24110b2f770ba4849f03c144c956c3f0a17e9c
