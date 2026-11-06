@@ -34,7 +34,7 @@ from pmri_nce.throttle import NceThrottle, NceThrottleManager
 from pmri_nce.traffic import NceTrafficController
 from pmri_nce.transport import BytePort, LoopbackPort, SerialPort, loopback_pair
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "COMMAND_SETS",
