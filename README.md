@@ -1,4 +1,4 @@
-NCE command station plugin for pmri
+# NCE command station plugin for pmri
 
 
 # pmri-nce — NCE hardware driver
