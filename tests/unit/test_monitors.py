@@ -82,21 +82,55 @@ async def test_turnout_monitor_detects_state_flip() -> None:
     # Turnout 1 is bit 0 of byte 0 at memory_base. With value 0, state = THROWN.
     cs.memory[NCE_PH_PRO_2006.turnout_memory_base] = 0x00
 
-    # First poll: snapshot is all zeros, fresh is all zeros -> no diff, no event.
-    # But the snapshot is initialized to zeros, so we need a *change* to trigger an event.
-    # Run poll, then flip the bit, then poll again.
+    # First poll force-emits every turnout's state so THROWN (bit=0) is
+    # reflected even though it matches the all-zero initial snapshot.
     await monitor._poll_once()
-    assert t.known_state == TurnoutState.UNKNOWN  # no change since startup
+    for _ in range(10):
+        if t.known_state != TurnoutState.UNKNOWN:
+            break
+        await asyncio.sleep(0.001)
+    assert t.known_state == TurnoutState.THROWN
 
-    # Flip turnout 1's bit to CLOSED (1).
+    # Flip turnout 1's bit to CLOSED (1). The diff kicks in now that the
+    # snapshot carries the previous (zero) byte.
     cs.memory[NCE_PH_PRO_2006.turnout_memory_base] = 0x01
     await monitor._poll_once()
-    # Give the listener microtask a tick.
     for _ in range(10):
         if t.known_state == TurnoutState.CLOSED:
             break
         await asyncio.sleep(0.001)
     assert t.known_state == TurnoutState.CLOSED
+
+    await cs.stop()
+    await tc.aclose()
+
+
+async def test_turnout_monitor_first_poll_emits_thrown_and_closed() -> None:
+    """Regression: on startup the monitor must emit the initial state
+    of EVERY known turnout, not only the ones whose bit is set. A
+    naive first-poll XOR diff against an all-zero snapshot would skip
+    thrown turnouts (bit 0 unchanged) and leave them stuck on UNKNOWN."""
+    a, b = loopback_pair()
+    tc = NceTrafficController(a)
+    cs = FakeCS(b)
+    cs.start()
+
+    mgr = NceTurnoutManager("N", tc=tc)
+    monitor = NceTurnoutMonitor(tc, mgr, NCE_PH_PRO_2006)
+
+    # Two turnouts: NT1 is thrown (bit 0 clear), NT2 is closed (bit 1 set).
+    t1 = await mgr.provide("NT1")
+    t2 = await mgr.provide("NT2")
+    cs.memory[NCE_PH_PRO_2006.turnout_memory_base] = 0b00000010
+
+    await monitor._poll_once()
+    for _ in range(20):
+        if (t1.known_state != TurnoutState.UNKNOWN
+                and t2.known_state != TurnoutState.UNKNOWN):
+            break
+        await asyncio.sleep(0.001)
+    assert t1.known_state == TurnoutState.THROWN
+    assert t2.known_state == TurnoutState.CLOSED
 
     await cs.stop()
     await tc.aclose()

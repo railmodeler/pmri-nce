@@ -49,6 +49,11 @@ class NceTurnoutMonitor:
         # Pre-allocated snapshot buffer: the bytes we most recently read.
         self._snapshot = bytearray(cmd_set.turnout_table_bytes)
         self._stop = asyncio.Event()
+        # On the first poll, force-emit every turnout's state regardless
+        # of whether its bit matches the all-zero initial snapshot.
+        # Otherwise thrown turnouts (bit = 0) would match the zero init
+        # and be silently left in UNKNOWN until they later transitioned.
+        self._initialized = False
 
     async def run(self) -> None:
         """Run forever until stopped via :meth:`stop`."""
@@ -75,14 +80,22 @@ class NceTurnoutMonitor:
                 _log.warning("NCE turnout-monitor poll failed at %#06x: %s", addr, e)
                 return
             await self._diff_and_emit(offset, reply.data)
+        # All chunks consumed -- subsequent polls do normal bit-flip diff.
+        self._initialized = True
 
     async def _diff_and_emit(self, offset: int, fresh: bytes) -> None:
-        """Compare *fresh* against the snapshot at *offset*; emit per flipped bit."""
+        """Compare *fresh* against the snapshot at *offset*; emit per
+        flipped bit. On the first poll the snapshot is all-zero, so a
+        pure XOR diff would miss THROWN turnouts (their bit is also 0
+        in the initial snapshot). First-poll path force-emits every
+        bit's state instead; subsequent polls diff normally.
+        """
+        first = not self._initialized
         old_chunk = self._snapshot[offset : offset + len(fresh)]
         for i, (old, new) in enumerate(zip(old_chunk, fresh, strict=False)):
-            if old == new:
+            if not first and old == new:
                 continue
-            changed = old ^ new
+            changed = 0xFF if first else (old ^ new)
             for bit in range(8):
                 if not (changed & (1 << bit)):
                     continue
